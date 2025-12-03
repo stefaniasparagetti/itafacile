@@ -56,7 +56,7 @@ const SettingsModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
             Necessaria per generare nuove lezioni. La chiave viene salvata solo nel tuo browser.
           </p>
           <p className="text-xs text-blue-500 mt-1">
-            <a href="https://aistudiocdn.google.com/app/apikey" target="_blank" rel="noopener noreferrer" className="underline">Ottieni una chiave gratuita qui</a>
+            <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" className="underline">Ottieni una chiave gratuita qui</a>
           </p>
         </div>
         <Button onClick={handleSave} fullWidth variant="primary">Salva Chiave</Button>
@@ -355,5 +355,115 @@ const App: React.FC = () => {
           <button 
             onClick={() => setShowSettings(true)}
             className="p-2 text-blue-200 hover:text-blue-600 hover:bg-blue-50 rounded-full transition-colors"
-            title="Impostazioni">
-            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 
+            title="Impostazioni"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+          </button>
+        </div>
+
+        <div className="p-8 pb-6 bg-blue-50 text-center border-b border-blue-100">
+          <h1 className="text-3xl font-bold text-blue-800 mb-2">ItaFacile 🇮🇹</h1>
+          <p className="text-gray-600">Impara parole nuove in un attimo!</p>
+        </div>
+
+        <div className="p-8">
+          <div className="mb-6">
+            <label className="block text-gray-700 text-sm font-bold mb-2 ml-1">
+              Di cosa vuoi parlare oggi?
+            </label>
+            <input
+              type="text"
+              value={topic}
+              onChange={(e) => setTopic(e.target.value)}
+              placeholder="es. Cibo, Scuola, Animali..."
+              className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-blue-500 focus:outline-none text-lg transition-colors"
+              onKeyDown={(e) => e.key === 'Enter' && handleCreateLesson()}
+            />
+          </div>
+
+          {error && (
+            <div className="mb-4 p-3 bg-red-100 text-red-700 rounded-lg text-sm border border-red-200">
+              {error}
+            </div>
+          )}
+
+          <Button 
+            onClick={() => handleCreateLesson()} 
+            fullWidth 
+            disabled={!topic.trim()}
+            className="mb-8"
+          >
+            ✨ Crea Lezione Magica
+          </Button>
+
+          {/* Library Section */}
+          <div className="pt-6 border-t border-gray-100">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-bold text-gray-500 text-sm uppercase tracking-wider flex items-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>
+                Libreria
+              </h3>
+              <div className="flex gap-2">
+                <button 
+                  onClick={handleExportLibrary}
+                  className="p-1.5 text-blue-500 hover:bg-blue-50 rounded-lg transition-colors"
+                  title="Scarica Backup Libreria"
+                  disabled={savedLessons.length === 0}
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                </button>
+                <button 
+                  onClick={handleImportClick}
+                  className="p-1.5 text-blue-500 hover:bg-blue-50 rounded-lg transition-colors"
+                  title="Importa Backup Libreria"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                </button>
+                {/* Hidden File Input */}
+                <input 
+                  type="file" 
+                  ref={fileInputRef} 
+                  onChange={handleImportFile} 
+                  accept=".json" 
+                  className="hidden" 
+                />
+              </div>
+            </div>
+            
+            {savedLessons.length === 0 ? (
+              <div className="text-center py-6 px-4 bg-gray-50 rounded-xl border-2 border-dashed border-gray-200">
+                <p className="text-gray-400 text-sm">Non hai ancora salvato nulla.</p>
+                <p className="text-gray-400 text-xs mt-1">Crea una lezione e apparirà qui!</p>
+              </div>
+            ) : (
+              <div className="space-y-2 max-h-60 overflow-y-auto no-scrollbar pr-1">
+                {savedLessons.map((l, idx) => (
+                  <div 
+                    key={idx} 
+                    className="flex items-center justify-between p-3 bg-gray-50 hover:bg-blue-50 rounded-xl border border-gray-100 transition-colors cursor-pointer group"
+                    onClick={() => loadFromLibrary(l)}
+                  >
+                    <span className="font-bold text-gray-700 group-hover:text-blue-700 capitalize">
+                      {l.topic}
+                    </span>
+                    <button 
+                      onClick={(e) => deleteFromLibrary(l.topic, e)}
+                      className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                      title="Elimina"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+      
+      {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
+    </div>
+  );
+};
+
+export default App;
