@@ -1,11 +1,12 @@
-import { GoogleGenAI, Type, Schema } from "@google/genai";
+
+ import { GoogleGenAI, Type, Schema } from "@google/genai";
 import { GameType, LessonPlan, GameItem } from "../types";
 
 // Helper to generate unique IDs
 const generateId = () => Math.random().toString(36).substr(2, 9);
 
 export const generateLessonContent = async (topic: string): Promise<LessonPlan> => {
-  // Check LocalStorage first (User provided key), then Environment variable
+  // 1. Check LocalStorage (User entered key manually in Settings)
   let apiKey = '';
   try {
     apiKey = localStorage.getItem('gemini_api_key') || '';
@@ -13,12 +14,27 @@ export const generateLessonContent = async (topic: string): Promise<LessonPlan> 
     console.warn("Local storage access failed");
   }
 
+  // 2. Check Vite Environment Variable (Standard for Vercel/Vite apps)
+  // We check safe access to import.meta to avoid crashes in non-module environments
   if (!apiKey) {
+    try {
+      // @ts-ignore
+      if (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_API_KEY) {
+        // @ts-ignore
+        apiKey = import.meta.env.VITE_API_KEY;
+      }
+    } catch (e) {
+      // Ignore
+    }
+  }
+
+  // 3. Fallback to process.env (Node.js/Legacy environments)
+  if (!apiKey && typeof process !== 'undefined' && process.env) {
     apiKey = process.env.API_KEY || '';
   }
 
   if (!apiKey) {
-    throw new Error("Chiave API mancante. Inseriscila nelle Impostazioni (⚙️).");
+    throw new Error("Chiave API mancante. Inseriscila nelle Impostazioni (⚙️) in alto a destra o configura VITE_API_KEY su Vercel.");
   }
 
   const ai = new GoogleGenAI({ apiKey });
@@ -92,7 +108,7 @@ export const generateLessonContent = async (topic: string): Promise<LessonPlan> 
     });
 
     const text = response.text;
-    if (!text) throw new Error("No content generated");
+    if (!text) throw new Error("Nessun contenuto generato.");
 
     const data = JSON.parse(text);
     
@@ -117,10 +133,25 @@ export const generateLessonContent = async (topic: string): Promise<LessonPlan> 
 
   } catch (error: any) {
     console.error("Gemini API Error:", error);
-    // User friendly error mapping
-    if (error.message.includes("Chiave API")) {
-        throw error; // Re-throw the custom error
+    
+    const errorMessage = (error.message || error.toString()).toLowerCase();
+
+    // 1. Check for Quota Exceeded (Limit reached)
+    if (errorMessage.includes("429") || errorMessage.includes("quota") || errorMessage.includes("resource has been exhausted")) {
+        throw new Error("⚠️ Limite traffico gratuito raggiunto. Attendi 1 minuto e riprova.");
     }
-    throw new Error("Impossibile creare la lezione. Controlla la tua chiave API o la connessione.");
+
+    // 2. Check for Invalid Key
+    if (errorMessage.includes("403") || errorMessage.includes("key not valid") || errorMessage.includes("api key")) {
+         throw new Error("🔑 Chiave API non valida. Controlla nelle Impostazioni.");
+    }
+
+    // 3. Check for Network/Connection
+    if (errorMessage.includes("fetch") || errorMessage.includes("network")) {
+        throw new Error("📡 Errore di connessione. Controlla internet.");
+    }
+
+    // Generic fallback
+    throw new Error("Impossibile creare la lezione. Riprova tra poco.");
   }
-};
+};         
