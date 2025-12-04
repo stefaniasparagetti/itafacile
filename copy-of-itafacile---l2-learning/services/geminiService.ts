@@ -1,43 +1,52 @@
-
- import { GoogleGenAI, Type, Schema } from "@google/genai";
+import { GoogleGenAI, Type, Schema } from "@google/genai";
 import { GameType, LessonPlan, GameItem } from "../types";
 
 // Helper to generate unique IDs
 const generateId = () => Math.random().toString(36).substr(2, 9);
 
-export const generateLessonContent = async (topic: string): Promise<LessonPlan> => {
-  // 1. Check LocalStorage (User entered key manually in Settings)
-  let apiKey = '';
+// Helper to check for API keys in various environments
+const getApiKey = (): string => {
+  let key = '';
+  // 1. LocalStorage
+  try { key = localStorage.getItem('gemini_api_key') || ''; } catch (e) {}
+  if (key) return key;
+
+  // 2. Vite Env
   try {
-    apiKey = localStorage.getItem('gemini_api_key') || '';
-  } catch (e) {
-    console.warn("Local storage access failed");
-  }
-
-  // 2. Check Vite Environment Variable (Standard for Vercel/Vite apps)
-  // We check safe access to import.meta to avoid crashes in non-module environments
-  if (!apiKey) {
-    try {
+    // @ts-ignore
+    if (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_API_KEY) {
       // @ts-ignore
-      if (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_API_KEY) {
-        // @ts-ignore
-        apiKey = import.meta.env.VITE_API_KEY;
-      }
-    } catch (e) {
-      // Ignore
+      return import.meta.env.VITE_API_KEY;
     }
-  }
+  } catch (e) {}
 
-  // 3. Fallback to process.env (Node.js/Legacy environments)
-  if (!apiKey && typeof process !== 'undefined' && process.env) {
-    apiKey = process.env.API_KEY || '';
+  // 3. Process Env
+  if (typeof process !== 'undefined' && process.env && process.env.API_KEY) {
+    return process.env.API_KEY;
   }
+  return '';
+};
 
-  if (!apiKey) {
-    throw new Error("Chiave API mancante. Inseriscila nelle Impostazioni (⚙️) in alto a destra o configura VITE_API_KEY su Vercel.");
-  }
-
+// Internal function to call specific model
+async function callGeminiModel(modelName: string, prompt: string, schema: Schema, apiKey: string) {
   const ai = new GoogleGenAI({ apiKey });
+  
+  return await ai.models.generateContent({
+    model: modelName,
+    contents: prompt,
+    config: {
+      responseMimeType: "application/json",
+      responseSchema: schema,
+      systemInstruction: "You are an Italian L2 teacher (Level A1). Output strict JSON.",
+    }
+  });
+}
+
+export const generateLessonContent = async (topic: string): Promise<LessonPlan> => {
+  const apiKey = getApiKey();
+  if (!apiKey) {
+    throw new Error("Chiave API mancante. Vai nelle Impostazioni (⚙️) o configura VITE_API_KEY su Vercel.");
+  }
 
   const schema: Schema = {
     type: Type.OBJECT,
@@ -51,25 +60,25 @@ export const generateLessonContent = async (topic: string): Promise<LessonPlan> 
             flashcard: {
               type: Type.OBJECT,
               properties: {
-                italian: { type: Type.STRING, description: "The word in Italian" },
-                emoji: { type: Type.STRING, description: "A single emoji representing the word" },
-                nativeHint: { type: Type.STRING, description: "A very simple hint in English" },
-                exampleSentence: { type: Type.STRING, description: "Simple example sentence in Italian using the word" }
+                italian: { type: Type.STRING },
+                emoji: { type: Type.STRING },
+                nativeHint: { type: Type.STRING },
+                exampleSentence: { type: Type.STRING }
               }
             },
             quiz: {
               type: Type.OBJECT,
               properties: {
-                question: { type: Type.STRING, description: "Simple question in Italian" },
-                options: { type: Type.ARRAY, items: { type: Type.STRING }, description: "4 possible answers" },
-                correctAnswerIndex: { type: Type.INTEGER, description: "Index of the correct answer (0-3)" }
+                question: { type: Type.STRING },
+                options: { type: Type.ARRAY, items: { type: Type.STRING } },
+                correctAnswerIndex: { type: Type.INTEGER }
               }
             },
             scramble: {
               type: Type.OBJECT,
               properties: {
-                sentence: { type: Type.STRING, description: "A simple correct Italian sentence" },
-                words: { type: Type.ARRAY, items: { type: Type.STRING }, description: "The words of the sentence in random order" }
+                sentence: { type: Type.STRING },
+                words: { type: Type.ARRAY, items: { type: Type.STRING } }
               }
             }
           },
@@ -80,78 +89,65 @@ export const generateLessonContent = async (topic: string): Promise<LessonPlan> 
     required: ["items"]
   };
 
+  // Optimized prompt to save tokens
   const prompt = `
-    Create an Italian L2 (Second Language) lesson plan for beginner students (Level A1/Literacy).
-    The topic is: "${topic}".
-    
-    Generate 6 items total:
-    - 3 FLASHCARDS: Introduce key vocabulary words related to the topic.
-    - 2 QUIZZES: Simple multiple choice questions. 
-      IMPORTANT FOR QUIZZES: 
-      1. Provide 1 Correct Answer and 3 Distractors.
-      2. The Distractors must be CLEARLY WRONG and from a completely different category to avoid confusion (e.g. if the answer is a person, distractors should be food or objects). 
-      3. DOUBLE CHECK that 'correctAnswerIndex' points to the actual correct string in the 'options' array.
-    - 1 SCRAMBLE: A simple sentence related to the topic that needs to be reordered.
-
-    Use simple, clear Italian suitable for middle school students learning to read/write.
+    Topic: "${topic}". Target: Italian L2 beginners (A1).
+    Generate 6 items:
+    1. 3 FLASHCARDS: Key vocab.
+    2. 2 QUIZZES: Question + 4 options (1 correct, 3 distractors from DIFFERENT categories).
+    3. 1 SCRAMBLE: Simple sentence.
   `;
 
   try {
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: prompt,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: schema,
-        systemInstruction: "You are an expert Italian teacher for foreign students (L2). Focus on high-frequency vocabulary and simple grammar. Ensure quiz answers are unambiguous.",
+    // Attempt 1: Standard Flash Model
+    try {
+      console.log("Tentativo con Gemini 2.5 Flash...");
+      const response = await callGeminiModel('gemini-2.5-flash', prompt, schema, apiKey);
+      const text = response.text;
+      if (!text) throw new Error("Empty response");
+      return parseResponse(text, topic);
+    } catch (err: any) {
+      const msg = (err.message || "").toLowerCase();
+      // If quota exceeded, try fallback
+      if (msg.includes("429") || msg.includes("quota") || msg.includes("exhausted")) {
+        console.warn("Quota 2.5 superata, passaggio a Lite...");
+        // Attempt 2: Flash Lite Model (Fallback)
+        const response = await callGeminiModel('gemini-flash-lite-latest', prompt, schema, apiKey);
+        const text = response.text;
+        if (!text) throw new Error("Empty response from Lite");
+        return parseResponse(text, topic);
       }
-    });
-
-    const text = response.text;
-    if (!text) throw new Error("Nessun contenuto generato.");
-
-    const data = JSON.parse(text);
-    
-    // Map the raw JSON to our internal types with IDs
-    const items: GameItem[] = data.items.map((item: any) => {
-      let content;
-      if (item.type === GameType.FLASHCARD) content = item.flashcard;
-      else if (item.type === GameType.QUIZ) content = item.quiz;
-      else if (item.type === GameType.SCRAMBLE) content = item.scramble;
-
-      return {
-        id: generateId(),
-        type: item.type,
-        content: content
-      };
-    });
-
-    return {
-      topic,
-      items
-    };
+      throw err; // Re-throw other errors
+    }
 
   } catch (error: any) {
-    console.error("Gemini API Error:", error);
-    
+    console.error("Gemini Final Error:", error);
     const errorMessage = (error.message || error.toString()).toLowerCase();
 
-    // 1. Check for Quota Exceeded (Limit reached)
-    if (errorMessage.includes("429") || errorMessage.includes("quota") || errorMessage.includes("resource has been exhausted")) {
-        throw new Error("⚠️ Limite traffico gratuito raggiunto. Attendi 1 minuto e riprova.");
+    if (errorMessage.includes("429") || errorMessage.includes("quota")) {
+        throw new Error("⚠️ Traffico intenso. Google ha temporaneamente bloccato le richieste. Riprova tra 1 minuto.");
     }
-
-    // 2. Check for Invalid Key
-    if (errorMessage.includes("403") || errorMessage.includes("key not valid") || errorMessage.includes("api key")) {
-         throw new Error("🔑 Chiave API non valida. Controlla nelle Impostazioni.");
+    if (errorMessage.includes("key") || errorMessage.includes("403")) {
+         throw new Error("🔑 Chiave API non valida o scaduta.");
     }
-
-    // 3. Check for Network/Connection
-    if (errorMessage.includes("fetch") || errorMessage.includes("network")) {
-        throw new Error("📡 Errore di connessione. Controlla internet.");
-    }
-
-    // Generic fallback
-    throw new Error("Impossibile creare la lezione. Riprova tra poco.");
+    throw new Error("Impossibile creare la lezione. Riprova.");
   }
-};         
+};
+
+function parseResponse(jsonText: string, topic: string): LessonPlan {
+  const data = JSON.parse(jsonText);
+  const items: GameItem[] = data.items.map((item: any) => {
+    let content;
+    if (item.type === GameType.FLASHCARD) content = item.flashcard;
+    else if (item.type === GameType.QUIZ) content = item.quiz;
+    else if (item.type === GameType.SCRAMBLE) content = item.scramble;
+
+    return {
+      id: generateId(),
+      type: item.type,
+      content: content
+    };
+  });
+
+  return { topic, items };
+}
