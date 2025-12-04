@@ -4,6 +4,9 @@ import { GameType, LessonPlan, GameItem } from "../types";
 // Helper to generate unique IDs
 const generateId = () => Math.random().toString(36).substr(2, 9);
 
+// Helper for waiting
+const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
 // Helper to check for API keys in various environments
 const getApiKey = (): string => {
   let key = '';
@@ -31,7 +34,7 @@ const getApiKey = (): string => {
 async function callGeminiModel(modelName: string, prompt: string, schema: Schema, apiKey: string) {
   const ai = new GoogleGenAI({ apiKey });
   
-  return await ai.models.generateContent({
+  const response = await ai.models.generateContent({
     model: modelName,
     contents: prompt,
     config: {
@@ -40,6 +43,9 @@ async function callGeminiModel(modelName: string, prompt: string, schema: Schema
       systemInstruction: "You are an Italian L2 teacher (Level A1). Output strict JSON.",
     }
   });
+
+  if (!response.text) throw new Error("Empty response from AI");
+  return response.text;
 }
 
 export const generateLessonContent = async (topic: string): Promise<LessonPlan> => {
@@ -89,7 +95,6 @@ export const generateLessonContent = async (topic: string): Promise<LessonPlan> 
     required: ["items"]
   };
 
-  // Optimized prompt to save tokens
   const prompt = `
     Topic: "${topic}". Target: Italian L2 beginners (A1).
     Generate 6 items:
@@ -98,56 +103,75 @@ export const generateLessonContent = async (topic: string): Promise<LessonPlan> 
     3. 1 SCRAMBLE: Simple sentence.
   `;
 
+  let lastError: any = null;
+
+  // --- TENTATIVO 1: Gemini 2.5 Flash ---
   try {
-    // Attempt 1: Standard Flash Model
-    try {
-      console.log("Tentativo con Gemini 2.5 Flash...");
-      const response = await callGeminiModel('gemini-2.5-flash', prompt, schema, apiKey);
-      const text = response.text;
-      if (!text) throw new Error("Empty response");
-      return parseResponse(text, topic);
-    } catch (err: any) {
-      const msg = (err.message || "").toLowerCase();
-      // If quota exceeded, try fallback
-      if (msg.includes("429") || msg.includes("quota") || msg.includes("exhausted")) {
-        console.warn("Quota 2.5 superata, passaggio a Lite...");
-        // Attempt 2: Flash Lite Model (Fallback)
-        const response = await callGeminiModel('gemini-flash-lite-latest', prompt, schema, apiKey);
-        const text = response.text;
-        if (!text) throw new Error("Empty response from Lite");
-        return parseResponse(text, topic);
-      }
-      throw err; // Re-throw other errors
-    }
-
-  } catch (error: any) {
-    console.error("Gemini Final Error:", error);
-    const errorMessage = (error.message || error.toString()).toLowerCase();
-
-    if (errorMessage.includes("429") || errorMessage.includes("quota")) {
-        throw new Error("⚠️ Traffico intenso. Google ha temporaneamente bloccato le richieste. Riprova tra 1 minuto.");
-    }
-    if (errorMessage.includes("key") || errorMessage.includes("403")) {
-         throw new Error("🔑 Chiave API non valida o scaduta.");
-    }
-    throw new Error("Impossibile creare la lezione. Riprova.");
+    console.log("Tentativo 1: Gemini 2.5 Flash");
+    const json = await callGeminiModel('gemini-2.5-flash', prompt, schema, apiKey);
+    return parseResponse(json, topic);
+  } catch (err) {
+    console.warn("Tentativo 1 fallito:", err);
+    lastError = err;
   }
+
+  // Pausa tattica di 2 secondi
+  await wait(2000);
+
+  // --- TENTATIVO 2: Gemini Flash Lite (Modello più leggero) ---
+  try {
+    console.log("Tentativo 2: Gemini Flash Lite");
+    const json = await callGeminiModel('gemini-flash-lite-latest', prompt, schema, apiKey);
+    return parseResponse(json, topic);
+  } catch (err) {
+    console.warn("Tentativo 2 fallito:", err);
+    lastError = err;
+  }
+
+  // Pausa tattica di 4 secondi
+  await wait(4000);
+
+  // --- TENTATIVO 3: Riprova Gemini 2.5 Flash ---
+  try {
+    console.log("Tentativo 3: Ultima chance Gemini 2.5 Flash");
+    const json = await callGeminiModel('gemini-2.5-flash', prompt, schema, apiKey);
+    return parseResponse(json, topic);
+  } catch (err) {
+    console.error("Tutti i tentativi falliti:", err);
+    lastError = err;
+  }
+
+  // Se siamo qui, abbiamo fallito 3 volte. Analizziamo l'ultimo errore.
+  const errorMessage = (lastError?.message || lastError?.toString() || "").toLowerCase();
+
+  if (errorMessage.includes("429") || errorMessage.includes("quota") || errorMessage.includes("exhausted")) {
+      throw new Error("⚠️ Il sistema è molto carico. Ho provato 3 volte ma Google non risponde. Attendi 2 minuti veri prima di riprovare.");
+  }
+  if (errorMessage.includes("key") || errorMessage.includes("403")) {
+       throw new Error("🔑 Chiave API non valida. Controlla di averla copiata tutta (inizia con AIza).");
+  }
+  
+  throw new Error("Impossibile creare la lezione al momento. Riprova più tardi.");
 };
 
 function parseResponse(jsonText: string, topic: string): LessonPlan {
-  const data = JSON.parse(jsonText);
-  const items: GameItem[] = data.items.map((item: any) => {
-    let content;
-    if (item.type === GameType.FLASHCARD) content = item.flashcard;
-    else if (item.type === GameType.QUIZ) content = item.quiz;
-    else if (item.type === GameType.SCRAMBLE) content = item.scramble;
+  try {
+    const data = JSON.parse(jsonText);
+    const items: GameItem[] = data.items.map((item: any) => {
+      let content;
+      if (item.type === GameType.FLASHCARD) content = item.flashcard;
+      else if (item.type === GameType.QUIZ) content = item.quiz;
+      else if (item.type === GameType.SCRAMBLE) content = item.scramble;
 
-    return {
-      id: generateId(),
-      type: item.type,
-      content: content
-    };
-  });
-
-  return { topic, items };
+      return {
+        id: generateId(),
+        type: item.type,
+        content: content
+      };
+    });
+    return { topic, items };
+  } catch (e) {
+    console.error("JSON Parsing Error", e);
+    throw new Error("Errore nella lettura della risposta AI.");
+  }
 }
